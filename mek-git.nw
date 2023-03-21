@@ -1,0 +1,349 @@
+\title{Peloton Git Wrapper}
+\author{Mat Kovach}
+\date{2021-08}
+
+\maketitle
+
+This is my personal wrapper around git to save a bit of typing and trying to avoid common mistakes I make.
+
+\section{Starting off}
+
+This is design to run on a stock system with only the standard TCL library. MacOS and Linux use should be able to run this unmodified. Linux users name need to install tcl. 
+
+<<mek-git.start>>=
+#!/usr/bin/tclsh
+# mek-git
+# Mat Kovach
+#
+@
+
+\section{Global Vars}
+
+The global vars \texttt{cmd,git\_dir,git\_branch,warn} are initialized
+before we start any operations.
+\begin{itemize}
+\item \texttt{cmd} - The git command to run.
+\item \texttt{git\_dir} - The toplevel directory for the git repo.
+\item \texttt{git\_branch} - The name of the current git branch.
+\item \texttt{warn} - If we are in a ``main'' git branch, issue a warning
+and disallow some commands to execute. 
+\end{itemize}
+
+<<mek-git.globalvars>>=
+set cmd [lindex $argv 0]
+
+set git_dir [get_top_level_dir]
+set git_branch [get_current_branch]
+
+# Make sure warn is set if needed
+set warn 0; warned
+@ %def cmd git_dir git_branch warn
+
+\section{Procedures}
+
+There are number of procedures used to handle various 'stuff'.
+
+TCL can be odd a times. When comparing to see if a string is empty, the \texttt{string compare} command returns 0 if true. This procedure makes it work the way I expect it. 
+<<mek-git.proc.emptystring>>=
+proc empty_string_p { query } { 
+	if { [string compare $query ""] == 0 } {
+		return 1
+	} else {
+		return 0
+	}
+}
+@ %def empty_string_p
+
+When writing to stdout from TCL, if a pipe closes before the write operation is completed, it will give a TCL error. This write procedure will keep that error from happening.
+
+<<mek-git.proc.write>>=
+## write a string line by line
+proc write { data } { 
+	# since we might be output to a pipe, this will save us
+	# a stacktrace if stdout is close before we are done.
+	# One could also add a prefix to each line here also.
+	foreach line [split $data "\n"] {
+		if [catch {puts $line}] exit
+	}
+}
+@ %def write
+
+This is a procedure to run shell commands from TCL. There is a number of checks to see if the command was successful or what was wrong. 
+
+<<mek-git.proc.run>>=
+## running a shell command from TCL.
+## note: this will not return any text until the job has finished.
+##       the text will be stored in memory.
+proc run { command } {
+    set status [ catch {eval [linsert $command 0 exec]} result ]
+    if {$status==0} {
+        # command was successful
+        # nothing written to stderr
+        return -code ok $result
+    } elseif {[string equal $::errorCode NONE]} {
+        # command was successful
+        # something was running to stderr
+        return -code ok $result
+    } else {
+        switch -exact -- [lindex $::errorCode 0] {
+            CHILDKILLED {
+                foreach {- pid sigName msg} $::errorCode break
+                # A child process, whose process ID was $pid,
+                # died on a signal named $sigName.  A human-
+                # readable message appears in $msg.
+                return -code error "pid $pid died on $sigName\n$msg\n$result"
+            }
+            CHILDSTATUS {
+                foreach {- pid code} $::errorCode break
+                # A child process, whose process ID was $pid,
+                # exited with a non-zero exit status, $code.
+                return -code error "pid $pid died with error code $code\n$result"
+            }
+            CHILDSUSP {
+                foreach {- pid sigName msg} $::errorCode break
+                # A child process, whose process ID was $pid,
+                # has been suspended because of a signal named
+                # $sigName.  A human-readable description of the
+                # signal appears in $msg.
+                return -code error "pid $pid suspended by $sigName\n$msg\$result"
+            }
+            POSIX {
+                foreach {- errName msg} $::errorCode break
+                # One of the kernel calls to launch the command
+                # failed.  The error code is in $errName, and a
+                # human-readable message is in $msg.
+                return -code error "POSIX: $errName\n$msg\n$result"
+            }
+        }
+    }
+}
+@ %def run
+
+Run a git command to get the name of the current git branch.
+
+<<mek-git.proc.get-current-branch>>=
+### some proc to get some data about the git repo.
+proc get_current_branch {} {
+  # This gets the current branch.
+  # if we are NOT in a current branch it will return an error.
+  # unless we are running "clone"
+  # if we are cloning, we want to return true if we are NOT 
+  # in a branch. Probably a better way to handle this, but 
+  # I am not that smart.
+  global cmd
+	if {[catch { run {git symbolic-ref --short HEAD} } result]} {
+		if {$cmd != "clone" } { 
+			puts stderr "$result"
+			exit 1 
+		} 
+		set result ""
+	}
+	return -code ok $result
+}
+@ %def get_current_branch
+
+Run a git command to get the top level directory of the git repo.
+
+<<mek-git.proc-git-top-level-dir>>=
+proc get_top_level_dir {} {
+	global cmd
+	if {[catch { run {git rev-parse --show-toplevel} } result]} {
+		if {$cmd != "clone" } { 
+			puts stderr "$result"
+			exit 1 
+		}
+		set result ""
+	}
+	return -code ok $result
+}
+@ %def get_top_level_dir
+
+If the global variable \texttt{warn} is setup, then to not allow certain commands to. Checking for \texttt{not\_allowed} will disabled a command.
+
+<<mek-git.proc.not-allowed>>=
+# If warn is set, don't allow a git command to run. This is to help 
+# stop doing add/commits/push in the 'main' branch
+proc not_allowed {} { 
+	global warn
+	global cmd
+	global git_branch
+	if { $warn } { 
+		puts stderr "command $cmd not allowed in $git_branch"
+		exit 0
+	}
+	return 1
+}
+@ %def not_allowed
+
+If in a \texttt{main} branch we may not want commands to run. Check the branch and set \texttt{warn} if needed. This also uses the \texttt{git\_branch} global variable.
+
+<<mek-git.proc.warned>>=
+### If in master, main, or trunk branch, don't allow some fucntions.
+# NOTE: You couild also write other procedures to set warn if youi lkke.
+proc warned { } { 
+	global git_branch
+	global warn
+	switch -exact $git_branch {
+		trunk -
+		main -
+		master {
+			set warn 1
+			# puts stderr "WARN:You are in $git_branch"
+		}
+	}
+}
+@ %def warned
+
+I like to combine my fetch and pull to keep my git branch clean. This is how one can create a custom git command using the wrapper.
+
+<<mek-git.proc.update>>=
+### I like have an update functions that does a fetch and pull.
+proc update {} {
+	if {[catch { run {git fetch --all -p -t} } result]} {
+		puts stderr $result
+		exit 1
+	}
+	write $result
+	if {[catch { run {git pull} } result]} {
+		puts stderr $result
+		exit 1
+	}
+	write $result
+	return -code ok $result
+}
+@ %def update
+
+<<mek-git.proc.run-command>>=
+proc run_command {} {
+	global cmd
+	if {[catch { run "$cmd" } result]} {
+		puts stderr $result
+		exit 1
+	}
+	return -code ok $result
+}
+@ %def run_command
+
+To shorten some commands, are add one (for example \texttt{update}) we have
+a switch statement that let's us changes things. 
+
+\begin{itemize}
+\item Some commands (\texttt{check,update,l,originpush}) are conveinence commands.
+\item I add a few abberviations for command (\texttt{ch,co,u,og}).
+\item I run now allowed before commands where I want to check if the are in
+a non-main branch.
+\end{itemize}
+
+<<mek-git.main.setup-command>>=
+# check the command, if they are ones we handle specially do that.
+# I also add some shortcuts for common commands.
+switch -exact $cmd {
+	ch -
+	check {
+		puts "$git_branch in [file tail $git_dir]"
+		set cmd "rev-parse HEAD"
+	}
+	co - 
+	checkout { 
+		set cmd "checkout"
+	}
+	u -
+	update {
+		write [update]
+		exit 0
+	}
+	l {
+		set cmd "log --oneline --graph"
+	}
+	a -
+	add {
+		set cmd "add"
+		not_allowed
+	}
+	c -
+	commit {
+		set cmd "commit"
+		not_allowed
+	}
+	p - 
+	push {
+		set cmd "push"
+		not_allowed
+	}
+	op -
+        og - 
+	originpush {
+		set cmd "push -u origin $git_branch"
+		not_allowed
+	}
+	hash -
+	current_hash {
+		set cmd "rev-parse HEAD"
+	}
+        gg {
+        	set cmd "grep -n"
+	}
+	clone {
+		if {[empty_string_p $git_dir] && \
+                    [empty_string_p $git_branch] } {
+		        set cmd [lindex $argv 0]
+                } else {
+			puts stderr "No!"
+			exit 1
+
+		}
+	}
+	default {
+		set cmd [lindex $argv 0]
+	}
+}
+@
+
+\section{Final Script \texttt{mek-git}}
+
+Let's put all the parts togeter and then run the actual git command
+(Finally!)
+
+<<mek-git>>=
+<<mek-git.start>>
+# 
+# global vars
+#
+<<mek-git.globalvars>>
+#
+# procedures
+#
+<<mek-git.proc.emptystring>>
+<<mek-git.proc.write>>
+<<mek-git.proc.run>>
+<<mek-git.proc.get-current-branch>>
+<<mek-git.proc-git-top-level-dir>>
+<<mek-git.proc.not-allowed>>
+<<mek-git.proc.warned>>
+<<mek-git.proc.update>>
+<<mek-git.proc.run-command>>
+#
+# main
+#
+<<mek-git.main.setup-command>>
+
+# Now set the git command we will run.
+# the write command used the global var `cmd'. Setup command
+# to be 'git' + 'cmd from our switch statement' + args
+set cmd "git $cmd [lrange $argv 1 end]"
+
+# run the command and write the ouput using the `write' helper funtion
+write [run_command]
+
+# exit
+
+exit 0
+@
+
+\newpage
+
+\section{Indexes}
+\subsection{Code Chunks}
+\nowebchunks
+\subsection{Identifiers}
+\nowebindex
