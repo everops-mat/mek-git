@@ -306,10 +306,6 @@ Let's put all the parts togeter and then run the actual git command
 
 <<mek-git>>=
 <<mek-git.start>>
-# 
-# global vars
-#
-<<mek-git.globalvars>>
 #
 # procedures
 #
@@ -322,6 +318,12 @@ Let's put all the parts togeter and then run the actual git command
 <<mek-git.proc.warned>>
 <<mek-git.proc.update>>
 <<mek-git.proc.run-command>>
+# 
+# global vars
+# We use procs to setup the global vars so they have to be defined
+# after the procs
+#
+<<mek-git.globalvars>>
 #
 # main
 #
