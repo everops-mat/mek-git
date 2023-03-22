@@ -1,7 +1,7 @@
 # mek-git
 A tcl wrapper for git
 
-This is my `literate' attempt at a tcl git wrapper. The main purpose 
+This is my `literate` attempt at a tcl git wrapper. The main purpose 
 is to prevent me from doing commits in `main' branches AND to also
 add a few helpful git commands that I run. For example:
 
