@@ -1,0 +1,12 @@
+# systax=docker/dockerfile:1
+FROM ubuntu:22.04
+ARG USER
+ARG HOME
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install noweb -y && apt-get upgrade -y
+RUN apt-get install -y make ed joe tcl 
+RUN echo ${USER}
+RUN echo ${HOME}
+RUN useradd -m -d ${HOME} ${USER}
+USER ${USER}
+WORKDIR ${HOME}

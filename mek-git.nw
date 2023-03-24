@@ -1,14 +1,15 @@
 \title{Peloton Git Wrapper}
+
 \author{Mat Kovach}
 \date{2021-08}
 
 \maketitle
 
-This is my personal wrapper around git to save a bit of typing and trying to avoid common mistakes I make.
+This is my personal wrapper around git to save a bit of typing and helm me avoid common mistakes I make.
+
+This will run on a TCL installation, using only the standard library. MacOS and Linux use should be able to run this unmodified. It works with the tcl install on MacOS, but Linux users may need to install TCL on their system.
 
 \section{Starting off}
-
-This is design to run on a stock system with only the standard TCL library. MacOS and Linux use should be able to run this unmodified. Linux users name need to install tcl. 
 
 <<mek-git.start>>=
 #!/usr/bin/tclsh
@@ -46,11 +47,11 @@ There are number of procedures used to handle various 'stuff'.
 TCL can be odd a times. When comparing to see if a string is empty, the \texttt{string compare} command returns 0 if true. This procedure makes it work the way I expect it. 
 <<mek-git.proc.emptystring>>=
 proc empty_string_p { query } { 
-	if { [string compare $query ""] == 0 } {
-		return 1
-	} else {
-		return 0
-	}
+  if { [string compare $query ""] == 0 } {
+    return 1
+  } else {
+    return 0
+  }
 }
 @ %def empty_string_p
 
@@ -59,12 +60,12 @@ When writing to stdout from TCL, if a pipe closes before the write operation is 
 <<mek-git.proc.write>>=
 ## write a string line by line
 proc write { data } { 
-	# since we might be output to a pipe, this will save us
-	# a stacktrace if stdout is close before we are done.
-	# One could also add a prefix to each line here also.
-	foreach line [split $data "\n"] {
-		if [catch {puts $line}] exit
-	}
+  # since we might be output to a pipe, this will save us
+  # a stacktrace if stdout is close before we are done.
+  # One could also add a prefix to each line here also.
+  foreach line [split $data "\n"] {
+    if [catch {puts $line}] exit
+  }
 }
 @ %def write
 
