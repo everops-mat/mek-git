@@ -1,0 +1,25 @@
+.TH NOTANGLE.TCL 1
+.SH NAME
+tangle.tcl \- simple tangle based on noweb
+.SH SYSNOPSIS
+.B tangle.tcl
+[
+.I -R chuck to display 
+]
+[
+.I file to search for chunk
+]
+.SH DESCRIPTION
+.I tangle.tcl 
+read file and searchs for all chunks. The will display the requested chunk.
+.PP
+To use the script, you'll need 
+.B
+TCL
+installed. No additional libraries should be needed.
+.PP
+tangle.tcl -R tangle.tcl tangle.nw
+.LP
+reads in the file tangle.nw and prints out the chunk tangle.tcl
+.SH SOURCE
+.B https://github.com/mek/lp/tangle
